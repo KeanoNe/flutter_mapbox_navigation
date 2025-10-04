@@ -28,6 +28,9 @@ public class FlutterMapboxNavigationView : NavigationFactory, FlutterPlatformVie
     private let passiveLocationManager = PassiveLocationManager()
     private lazy var passiveLocationProvider = PassiveLocationProvider(locationManager: passiveLocationManager)
 
+    // Marker/Annotation management
+    private var pointAnnotationManager: PointAnnotationManager?
+
     init(messenger: FlutterBinaryMessenger, frame: CGRect, viewId: Int64, args: Any?)
     {
         self.frame = frame
@@ -83,6 +86,38 @@ public class FlutterMapboxNavigationView : NavigationFactory, FlutterPlatformVie
             else if(call.method == "reCenter"){
                 //used to recenter map from user action during navigation
                 strongSelf.navigationMapView.navigationCamera.follow()
+            }
+            else if(call.method == "moveCameraTo"){
+                let latitude = arguments?["latitude"] as? Double ?? 0
+                let longitude = arguments?["longitude"] as? Double ?? 0
+                let zoom = arguments?["zoom"] as? Double
+                let bearing = arguments?["bearing"] as? Double
+                let tilt = arguments?["tilt"] as? Double
+
+                strongSelf.moveCameraToCoordinates(
+                    latitude: latitude,
+                    longitude: longitude,
+                    zoom: zoom,
+                    bearing: bearing,
+                    tilt: tilt
+                )
+                result(true)
+            }
+            else if(call.method == "addMarker"){
+                let latitude = arguments?["latitude"] as? Double ?? 0
+                let longitude = arguments?["longitude"] as? Double ?? 0
+                let title = arguments?["title"] as? String
+
+                strongSelf.addMarker(
+                    latitude: latitude,
+                    longitude: longitude,
+                    title: title
+                )
+                result(true)
+            }
+            else if(call.method == "removeMarkers"){
+                strongSelf.removeMarkers()
+                result(true)
             }
             else
             {
@@ -331,15 +366,82 @@ public class FlutterMapboxNavigationView : NavigationFactory, FlutterPlatformVie
         holderView.addConstraints([pinTop, pinBottom, pinLeft, pinRight])
     }
 
-    func moveCameraToCoordinates(latitude: Double, longitude: Double) {
-        let navigationViewportDataSource = NavigationViewportDataSource(navigationMapView.mapView, viewportDataSourceType: .raw)
-        navigationViewportDataSource.options.followingCameraOptions.zoomUpdatesAllowed = false
-        navigationViewportDataSource.followingMobileCamera.center = CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
-        navigationViewportDataSource.followingMobileCamera.zoom = _zoom
-        navigationViewportDataSource.followingMobileCamera.bearing = _bearing
-        navigationViewportDataSource.followingMobileCamera.pitch = 15
-        navigationViewportDataSource.followingMobileCamera.padding = .zero
-        navigationMapView.navigationCamera.viewportDataSource = navigationViewportDataSource
+    func moveCameraToCoordinates(
+        latitude: Double,
+        longitude: Double,
+        zoom: Double? = nil,
+        bearing: Double? = nil,
+        tilt: Double? = nil
+    ) {
+        // Direkt die MapView Kamera steuern statt NavigationViewportDataSource
+        let coordinate = CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+        let cameraOptions = CameraOptions(
+            center: coordinate,
+            padding: .zero,
+            zoom: CGFloat(zoom ?? _zoom),
+            bearing: bearing ?? _bearing,
+            pitch: CGFloat(tilt ?? 15)
+        )
+
+        // Animation zur neuen Position
+        navigationMapView.mapView.camera.ease(
+            to: cameraOptions,
+            duration: 1.5,
+            completion: nil
+        )
+    }
+
+    func addMarker(latitude: Double, longitude: Double, title: String? = nil) {
+        // Point Annotation Manager erstellen falls noch nicht vorhanden
+        if pointAnnotationManager == nil {
+            pointAnnotationManager = navigationMapView.mapView.annotations.makePointAnnotationManager()
+        }
+
+        // Custom Pin Image erstellen
+        let pinImage = createCustomPinImage()
+
+        // Marker erstellen mit custom Image
+        var pointAnnotation = PointAnnotation(coordinate: CLLocationCoordinate2D(latitude: latitude, longitude: longitude))
+        pointAnnotation.image = .init(image: pinImage, name: "custom-pin")
+        pointAnnotation.iconAnchor = .bottom
+
+        pointAnnotationManager?.annotations.append(pointAnnotation)
+    }
+
+    func createCustomPinImage() -> UIImage {
+        let size = CGSize(width: 45, height: 60)
+        let renderer = UIGraphicsImageRenderer(size: size)
+
+        return renderer.image { context in
+            let ctx = context.cgContext
+
+            // Pin Körper (Tropfen-Form)
+            let pinPath = UIBezierPath()
+            pinPath.move(to: CGPoint(x: 22.5, y: 60)) // Spitze unten
+            pinPath.addQuadCurve(to: CGPoint(x: 7.5, y: 22.5), controlPoint: CGPoint(x: 7.5, y: 37.5))
+            pinPath.addQuadCurve(to: CGPoint(x: 22.5, y: 7.5), controlPoint: CGPoint(x: 7.5, y: 7.5))
+            pinPath.addQuadCurve(to: CGPoint(x: 37.5, y: 22.5), controlPoint: CGPoint(x: 37.5, y: 7.5))
+            pinPath.addQuadCurve(to: CGPoint(x: 22.5, y: 60), controlPoint: CGPoint(x: 37.5, y: 37.5))
+            pinPath.close()
+
+            // Roter Pin
+            UIColor.systemRed.setFill()
+            pinPath.fill()
+
+            // Weißer Rand
+            UIColor.white.setStroke()
+            pinPath.lineWidth = 3
+            pinPath.stroke()
+
+            // Weißer Kreis in der Mitte
+            let circlePath = UIBezierPath(ovalIn: CGRect(x: 15, y: 15, width: 15, height: 15))
+            UIColor.white.setFill()
+            circlePath.fill()
+        }
+    }
+
+    func removeMarkers() {
+        pointAnnotationManager?.annotations = []
     }
 
     func moveCameraToCenter()

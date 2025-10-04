@@ -96,6 +96,15 @@ open class TurnByTurn(
             "getDurationRemaining" -> {
                 result.success(this.durationRemaining)
             }
+            "moveCameraTo" -> {
+                this.moveCameraTo(methodCall, result)
+            }
+            "addMarker" -> {
+                this.addMarker(methodCall, result)
+            }
+            "removeMarkers" -> {
+                this.removeMarkers(methodCall, result)
+            }
             else -> result.notImplemented()
         }
     }
@@ -205,6 +214,68 @@ open class TurnByTurn(
         } else {
             result.success(false)
         }
+    }
+
+    private fun moveCameraTo(methodCall: MethodCall, result: MethodChannel.Result) {
+        val arguments = methodCall.arguments as? Map<*, *>
+        val latitude = arguments?.get("latitude") as? Double ?: 0.0
+        val longitude = arguments?.get("longitude") as? Double ?: 0.0
+        val zoom = arguments?.get("zoom") as? Double ?: 15.0
+        val bearing = arguments?.get("bearing") as? Double ?: 0.0
+        val tilt = arguments?.get("tilt") as? Double ?: 0.0
+
+        activity.runOnUiThread {
+            val cameraOptions = com.mapbox.maps.CameraOptions.Builder()
+                .center(Point.fromLngLat(longitude, latitude))
+                .zoom(zoom)
+                .bearing(bearing)
+                .pitch(tilt)
+                .build()
+
+            binding.navigationView.api.getCameraAnimationsPlugin().easeTo(
+                cameraOptions,
+                com.mapbox.maps.plugin.animation.MapAnimationOptions.mapAnimationOptions {
+                    duration(1500L)
+                }
+            )
+        }
+
+        result.success(true)
+    }
+
+    private fun addMarker(methodCall: MethodCall, result: MethodChannel.Result) {
+        val arguments = methodCall.arguments as? Map<*, *>
+        val latitude = arguments?.get("latitude") as? Double ?: 0.0
+        val longitude = arguments?.get("longitude") as? Double ?: 0.0
+        val title = arguments?.get("title") as? String
+
+        activity.runOnUiThread {
+            // Point Annotation Manager erstellen falls noch nicht vorhanden
+            if (pointAnnotationManager == null) {
+                pointAnnotationManager = binding.navigationView.api.mapView.annotations.createPointAnnotationManager()
+            }
+
+            // Neuen Marker erstellen
+            val pointAnnotationOptions = com.mapbox.maps.plugin.annotation.generated.PointAnnotationOptions()
+                .withPoint(Point.fromLngLat(longitude, latitude))
+                .withIconImage("mapbox-marker-icon-default") // Standard roter Pin
+
+            val annotation = pointAnnotationManager?.create(pointAnnotationOptions)
+            if (annotation != null) {
+                currentMarkers.add(annotation)
+            }
+        }
+
+        result.success(true)
+    }
+
+    private fun removeMarkers(methodCall: MethodCall, result: MethodChannel.Result) {
+        activity.runOnUiThread {
+            pointAnnotationManager?.deleteAll()
+            currentMarkers.clear()
+        }
+
+        result.success(true)
     }
 
     @SuppressLint("MissingPermission")
@@ -365,6 +436,10 @@ open class TurnByTurn(
     // Config
     private var initialLatitude: Double? = null
     private var initialLongitude: Double? = null
+
+    // Marker management
+    private var pointAnnotationManager: com.mapbox.maps.plugin.annotation.generated.PointAnnotationManager? = null
+    private val currentMarkers = mutableListOf<com.mapbox.maps.plugin.annotation.generated.PointAnnotation>()
 
     // val wayPoints: MutableList<Point> = mutableListOf()
     private var navigationMode = DirectionsCriteria.PROFILE_DRIVING_TRAFFIC

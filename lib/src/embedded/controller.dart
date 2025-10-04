@@ -126,6 +126,57 @@ class MapBoxNavigationViewController {
     return success as bool?;
   }
 
+  /// Moves the camera to specific coordinates without building a route
+  ///
+  /// [latitude] Target latitude
+  /// [longitude] Target longitude
+  /// [zoom] Optional zoom level (defaults to current zoom)
+  /// [bearing] Optional bearing in degrees (defaults to 0)
+  /// [tilt] Optional tilt/pitch in degrees (defaults to 0)
+  Future<bool?> moveCameraTo({
+    required double latitude,
+    required double longitude,
+    double? zoom,
+    double? bearing,
+    double? tilt,
+  }) async {
+    final args = <String, dynamic>{
+      'latitude': latitude,
+      'longitude': longitude,
+    };
+
+    if (zoom != null) args['zoom'] = zoom;
+    if (bearing != null) args['bearing'] = bearing;
+    if (tilt != null) args['tilt'] = tilt;
+
+    return _methodChannel.invokeMethod('moveCameraTo', args);
+  }
+
+  /// Adds a marker at specific coordinates
+  ///
+  /// [latitude] Marker latitude
+  /// [longitude] Marker longitude
+  /// [title] Optional marker title
+  Future<bool?> addMarker({
+    required double latitude,
+    required double longitude,
+    String? title,
+  }) async {
+    final args = <String, dynamic>{
+      'latitude': latitude,
+      'longitude': longitude,
+    };
+
+    if (title != null) args['title'] = title;
+
+    return _methodChannel.invokeMethod('addMarker', args);
+  }
+
+  /// Removes all markers from the map
+  Future<bool?> removeMarkers() async {
+    return _methodChannel.invokeMethod('removeMarkers', null);
+  }
+
   /// Generic Handler for Messages sent from the Platform
   Future<dynamic> _handleMethod(MethodCall call) async {
     switch (call.method) {
