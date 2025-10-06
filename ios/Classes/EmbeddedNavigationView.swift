@@ -119,6 +119,11 @@ public class FlutterMapboxNavigationView : NavigationFactory, FlutterPlatformVie
                 strongSelf.removeMarkers()
                 result(true)
             }
+            else if(call.method == "setUserInteractionEnabled"){
+                let enabled = arguments?["enabled"] as? Bool ?? true
+                strongSelf.setUserInteractionEnabled(enabled: enabled)
+                result(true)
+            }
             else
             {
                 result("method is not implemented");
@@ -144,6 +149,15 @@ public class FlutterMapboxNavigationView : NavigationFactory, FlutterPlatformVie
     {
         navigationMapView = NavigationMapView(frame: frame)
         navigationMapView.delegate = self
+
+        // Karteninteraktion standardmäßig aktivieren (nur Gesten, nicht View-Level)
+        navigationMapView.mapView.gestures.options.panEnabled = true
+        navigationMapView.mapView.gestures.options.pinchEnabled = true
+        navigationMapView.mapView.gestures.options.rotateEnabled = true
+        navigationMapView.mapView.gestures.options.pitchEnabled = true
+
+        // Navigation Camera initial stoppen
+        navigationMapView.navigationCamera.stop()
 
         if(self.arguments != nil)
         {
@@ -178,6 +192,7 @@ public class FlutterMapboxNavigationView : NavigationFactory, FlutterPlatformVie
         {
             let gesture = UILongPressGestureRecognizer(target: self, action: #selector(handleLongPress(_:)))
             gesture.delegate = self
+            gesture.minimumPressDuration = 1.0 // Erhöhe auf 1 Sekunde um Konflikt mit Pan zu reduzieren
             navigationMapView?.addGestureRecognizer(gesture)
         }
         
@@ -444,29 +459,35 @@ public class FlutterMapboxNavigationView : NavigationFactory, FlutterPlatformVie
         pointAnnotationManager?.annotations = []
     }
 
+    func setUserInteractionEnabled(enabled: Bool) {
+        // WICHTIG: Wir deaktivieren NICHT navigationMapView.isUserInteractionEnabled
+        // weil das ALLE Interaktionen blockiert (auch Buttons im NavigationView)
+
+        // Nur Map-Gesten aktivieren/deaktivieren
+        navigationMapView.mapView.gestures.options.panEnabled = enabled
+        navigationMapView.mapView.gestures.options.pinchEnabled = enabled
+        navigationMapView.mapView.gestures.options.rotateEnabled = enabled
+        navigationMapView.mapView.gestures.options.pitchEnabled = enabled
+        navigationMapView.mapView.gestures.options.doubleTapToZoomInEnabled = enabled
+        navigationMapView.mapView.gestures.options.doubleTouchToZoomOutEnabled = enabled
+        navigationMapView.mapView.gestures.options.quickZoomEnabled = enabled
+
+        // Direkt Gesture Recognizer aktivieren/deaktivieren
+        navigationMapView.mapView.gestures.panGestureRecognizer.isEnabled = enabled
+        navigationMapView.mapView.gestures.pinchGestureRecognizer.isEnabled = enabled
+        navigationMapView.mapView.gestures.rotateGestureRecognizer.isEnabled = enabled
+        navigationMapView.mapView.gestures.pitchGestureRecognizer.isEnabled = enabled
+
+        // Navigation Camera stoppen wenn Interaktion aktiviert
+        if enabled {
+            navigationMapView.navigationCamera.stop()
+        }
+    }
+
     func moveCameraToCenter()
     {
-        var duration = 5.0
-        if(!_animateBuildRoute)
-        {
-            duration = 0.0
-        }
-
-        let navigationViewportDataSource = NavigationViewportDataSource(navigationMapView.mapView, viewportDataSourceType: .raw)
-        navigationViewportDataSource.options.followingCameraOptions.zoomUpdatesAllowed = false
-        navigationViewportDataSource.followingMobileCamera.zoom = 13.0
-        navigationViewportDataSource.followingMobileCamera.pitch = 15
-        navigationViewportDataSource.followingMobileCamera.padding = .zero
-        //navigationViewportDataSource.followingMobileCamera.center = mapView?.centerCoordinate
-        navigationMapView.navigationCamera.viewportDataSource = navigationViewportDataSource
-
-        // Create a camera that rotates around the same center point, rotating 180°.
-        // `fromDistance:` is meters above mean sea level that an eye would have to be in order to see what the map view is showing.
-        //let camera = NavigationCamera( Camera(lookingAtCenter: mapView.centerCoordinate, altitude: 2500, pitch: 15, heading: 180)
-
-        // Animate the camera movement over 5 seconds.
-        //navigationMapView.mapView.mapboxMap.setCamera(to: CameraOptions(center: navigationMapView.mapView.ma, zoom: 13.0))
-                                       //(camera, withDuration: duration, animationTimingFunction: CAMediaTimingFunction(name: CAMediaTimingFunctionName.easeInEaseOut))
+        // DEAKTIVIERT: ViewportDataSource blockiert User-Gesten
+        // Wir nutzen moveCameraTo() für Kamera-Bewegungen stattdessen
     }
 
 }
@@ -515,6 +536,9 @@ extension FlutterMapboxNavigationView : NavigationMapViewDelegate {
     public func mapViewDidFinishLoadingMap(_ mapView: NavigationMapView) {
         // Wait for the map to load before initiating the first camera movement.
         moveCameraToCenter()
+
+        // moveCameraToCenter wird aufgerufen aber macht nichts (wurde deaktiviert)
+        // Camera wurde bereits beim Setup gestoppt
     }
 
 }

@@ -105,6 +105,9 @@ open class TurnByTurn(
             "removeMarkers" -> {
                 this.removeMarkers(methodCall, result)
             }
+            "setUserInteractionEnabled" -> {
+                this.setUserInteractionEnabled(methodCall, result)
+            }
             else -> result.notImplemented()
         }
     }
@@ -273,6 +276,23 @@ open class TurnByTurn(
         activity.runOnUiThread {
             pointAnnotationManager?.deleteAll()
             currentMarkers.clear()
+        }
+
+        result.success(true)
+    }
+
+    private fun setUserInteractionEnabled(methodCall: MethodCall, result: MethodChannel.Result) {
+        val arguments = methodCall.arguments as? Map<*, *>
+        val enabled = arguments?.get("enabled") as? Boolean ?: true
+
+        activity.runOnUiThread {
+            val gesturesPlugin = binding.navigationView.api.mapView.gestures
+            gesturesPlugin.updateSettings {
+                scrollEnabled = enabled
+                pinchToZoomEnabled = enabled
+                rotateEnabled = enabled
+                pitchEnabled = enabled
+            }
         }
 
         result.success(true)

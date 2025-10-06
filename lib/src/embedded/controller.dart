@@ -177,6 +177,11 @@ class MapBoxNavigationViewController {
     return _methodChannel.invokeMethod('removeMarkers', null);
   }
 
+  /// Enables or disables user interaction (pan, zoom) on the map
+  Future<bool?> setUserInteractionEnabled(bool enabled) async {
+    return _methodChannel.invokeMethod('setUserInteractionEnabled', {'enabled': enabled});
+  }
+
   /// Generic Handler for Messages sent from the Platform
   Future<dynamic> _handleMethod(MethodCall call) async {
     switch (call.method) {
