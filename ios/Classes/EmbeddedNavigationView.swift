@@ -208,14 +208,17 @@ public class FlutterMapboxNavigationView : NavigationFactory, FlutterPlatformVie
     {
         if routeResponse == nil
         {
+            result(true)
             return
         }
         if (navigationService != nil) {
             navigationService.stop()
         }
         navigationMapView.removeRoutes()
+        navigationMapView.removeWaypoints()
         routeResponse = nil
         sendEvent(eventType: MapBoxEventType.navigation_cancelled)
+        result(true)
     }
 
     func buildRoute(arguments: NSDictionary?, flutterResult: @escaping FlutterResult)
@@ -420,7 +423,7 @@ public class FlutterMapboxNavigationView : NavigationFactory, FlutterPlatformVie
         pointAnnotation.image = .init(image: pinImage, name: "custom-pin")
         pointAnnotation.iconAnchor = .bottom
 
-        pointAnnotationManager?.annotations.append(pointAnnotation)
+        pointAnnotationManager?.annotations = [pointAnnotation]
     }
 
     func createCustomPinImage() -> UIImage {
@@ -457,6 +460,7 @@ public class FlutterMapboxNavigationView : NavigationFactory, FlutterPlatformVie
 
     func removeMarkers() {
         pointAnnotationManager?.annotations = []
+        pointAnnotationManager = nil
     }
 
     func setUserInteractionEnabled(enabled: Bool) {
