@@ -343,7 +343,14 @@ public class FlutterMapboxNavigationView : NavigationFactory, FlutterPlatformVie
         if(_mapStyleUrlNight != nil){
             nightStyle.mapStyleURL = URL(string: _mapStyleUrlNight!)!
         }
-        let navigationOptions = NavigationOptions(styles: [dayStyle, nightStyle], navigationService: navigationService)
+
+        // Voice Controller mit korrekter Locale erstellen, um deutsche Sprachausgabe auch beim Rerouting zu gewährleisten
+        let locale = Locale(identifier: _language)
+        let speechSynthesizer = SystemSpeechSynthesizer()
+        speechSynthesizer.locale = locale
+        let routeVoiceController = RouteVoiceController(navigationService: navigationService, speechSynthesizer: MultiplexedSpeechSynthesizer([speechSynthesizer]))
+
+        let navigationOptions = NavigationOptions(styles: [dayStyle, nightStyle], navigationService: navigationService, voiceController: routeVoiceController)
 
         // Remove previous navigation view and controller if any
         if(_navigationViewController?.view != nil){
@@ -519,6 +526,27 @@ extension FlutterMapboxNavigationView : NavigationServiceDelegate {
                 _eventSink = nil
             }
         }
+    }
+
+    // Wird nach einem Rerouting aufgerufen - Voice Controller Locale erneut setzen
+    public func navigationService(_ service: NavigationService, didRerouteAlong route: Route, at location: CLLocation?, proactive: Bool) {
+        // Voice Controller Locale nach Rerouting erneut setzen, um deutsche Sprachausgabe beizubehalten
+        if let viewController = _navigationViewController {
+            let locale = Locale(identifier: _language)
+            let speechSynthesizer = SystemSpeechSynthesizer()
+            speechSynthesizer.locale = locale
+            let routeVoiceController = RouteVoiceController(navigationService: navigationService, speechSynthesizer: MultiplexedSpeechSynthesizer([speechSynthesizer]))
+            viewController.voiceController = routeVoiceController
+        }
+        sendEvent(eventType: MapBoxEventType.user_off_route)
+    }
+
+    // Route-Optionen für Rerouting modifizieren
+    public func navigationService(_ service: NavigationService, modifiedOptionsForReroute options: RouteOptions) -> RouteOptions {
+        // Stelle sicher, dass die Sprache beim Rerouting erhalten bleibt
+        options.locale = Locale(identifier: _language)
+        options.distanceMeasurementSystem = _voiceUnits == "imperial" ? .imperial : .metric
+        return options
     }
 }
 
