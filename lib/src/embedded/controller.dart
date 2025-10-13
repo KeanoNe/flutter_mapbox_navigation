@@ -112,6 +112,11 @@ class MapBoxNavigationViewController {
     return _methodChannel.invokeMethod('startFreeDrive', args);
   }
 
+  /// Stops Free Drive Mode
+  Future<bool?> stopFreeDrive() async {
+    return _methodChannel.invokeMethod('stopFreeDrive', null);
+  }
+
   /// Starts the Navigation
   Future<bool?> startNavigation({MapBoxOptions? options}) async {
     Map<String, dynamic>? args;

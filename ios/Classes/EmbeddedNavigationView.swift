@@ -31,6 +31,10 @@ public class FlutterMapboxNavigationView : NavigationFactory, FlutterPlatformVie
     // Marker/Annotation management
     private var pointAnnotationManager: PointAnnotationManager?
 
+    // Voice controller - strong reference to prevent deallocation during rerouting
+    var routeVoiceController: RouteVoiceController?
+    var speechSynthesizer: SystemSpeechSynthesizer?
+
     init(messenger: FlutterBinaryMessenger, frame: CGRect, viewId: Int64, args: Any?)
     {
         self.frame = frame
@@ -82,6 +86,10 @@ public class FlutterMapboxNavigationView : NavigationFactory, FlutterPlatformVie
             else if(call.method == "startFreeDrive")
             {
                 strongSelf.startEmbeddedFreeDrive(arguments: arguments, result: result)
+            }
+            else if(call.method == "stopFreeDrive")
+            {
+                strongSelf.stopEmbeddedFreeDrive(result: result)
             }
             else if(call.method == "startNavigation")
             {
@@ -320,15 +328,45 @@ public class FlutterMapboxNavigationView : NavigationFactory, FlutterPlatformVie
         navigationMapView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         navigationMapView.userLocationStyle = .puck2D()
 
+        // ViewportDataSource konfigurieren
         let navigationViewportDataSource = NavigationViewportDataSource(navigationMapView.mapView)
+
+        // Zoom-Updates deaktivieren und festen Zoom setzen
         navigationViewportDataSource.options.followingCameraOptions.zoomUpdatesAllowed = false
+        navigationViewportDataSource.options.followingCameraOptions.centerUpdatesAllowed = true
+        navigationViewportDataSource.options.followingCameraOptions.bearingUpdatesAllowed = true
+        navigationViewportDataSource.options.followingCameraOptions.pitchUpdatesAllowed = false
+
+        // Festen Zoom-Level setzen
         navigationViewportDataSource.followingMobileCamera.zoom = _zoom
+
+        // ViewportDataSource setzen BEVOR follow() aufgerufen wird
         navigationMapView.navigationCamera.viewportDataSource = navigationViewportDataSource
+
+        // Kamera muss erst gestoppt werden, dann neu gestartet
+        navigationMapView.navigationCamera.stop()
+
+        // Jetzt Kamera-Verfolgung aktivieren
+        navigationMapView.navigationCamera.follow()
+
+        result(true)
+    }
+
+    func stopEmbeddedFreeDrive(result: @escaping FlutterResult) {
+        // Free Drive Kamera-Verfolgung stoppen
+        navigationMapView.navigationCamera.stop()
+        passiveLocationProvider.stopUpdatingLocation()
+
         result(true)
     }
 
     func startEmbeddedNavigation(arguments: NSDictionary?, result: @escaping FlutterResult) {
         guard let response = self.routeResponse else { return }
+
+        // Free Drive Kamera-Verfolgung stoppen bevor Navigation startet
+        navigationMapView.navigationCamera.stop()
+        passiveLocationProvider.stopUpdatingLocation()
+
         let navLocationManager = self._simulateRoute ? SimulatedLocationManager(route: response.routes!.first!) : NavigationLocationManager()
         navigationService = MapboxNavigationService(routeResponse: response,
                                                             routeIndex: selectedRouteIndex,
@@ -349,10 +387,11 @@ public class FlutterMapboxNavigationView : NavigationFactory, FlutterPlatformVie
         }
 
         // Voice Controller mit korrekter Locale erstellen, um deutsche Sprachausgabe auch beim Rerouting zu gewährleisten
+        // Speichere als Instance Property, um zu verhindern, dass der Voice Controller beim Rerouting verloren geht
         let locale = Locale(identifier: _language)
-        let speechSynthesizer = SystemSpeechSynthesizer()
-        speechSynthesizer.locale = locale
-        let routeVoiceController = RouteVoiceController(navigationService: navigationService, speechSynthesizer: MultiplexedSpeechSynthesizer([speechSynthesizer]))
+        speechSynthesizer = SystemSpeechSynthesizer()
+        speechSynthesizer?.locale = locale
+        routeVoiceController = RouteVoiceController(navigationService: navigationService, speechSynthesizer: MultiplexedSpeechSynthesizer([speechSynthesizer!]))
 
         let navigationOptions = NavigationOptions(styles: [dayStyle, nightStyle], navigationService: navigationService, voiceController: routeVoiceController)
 
@@ -493,10 +532,8 @@ public class FlutterMapboxNavigationView : NavigationFactory, FlutterPlatformVie
         navigationMapView.mapView.gestures.rotateGestureRecognizer.isEnabled = enabled
         navigationMapView.mapView.gestures.pitchGestureRecognizer.isEnabled = enabled
 
-        // Navigation Camera stoppen wenn Interaktion aktiviert
-        if enabled {
-            navigationMapView.navigationCamera.stop()
-        }
+        // NICHT die Navigation Camera stoppen - das würde Free Drive deaktivieren
+        // Die Gesten-Steuerung reicht aus, um Interaktion zu kontrollieren
     }
 
     func moveCameraToCenter()
