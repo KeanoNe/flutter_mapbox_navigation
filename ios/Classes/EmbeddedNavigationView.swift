@@ -43,6 +43,10 @@ public class FlutterMapboxNavigationView : NavigationFactory, FlutterPlatformVie
 
         super.init()
 
+        // Set default locale to German
+        self._language = "de"
+        self._voiceUnits = "metric"
+
         self.eventChannel.setStreamHandler(self)
 
         self.channel.setMethodCallHandler { [weak self](call, result) in
@@ -528,16 +532,8 @@ extension FlutterMapboxNavigationView : NavigationServiceDelegate {
         }
     }
 
-    // Wird nach einem Rerouting aufgerufen - Voice Controller Locale erneut setzen
+    // Wird nach einem Rerouting aufgerufen
     public func navigationService(_ service: NavigationService, didRerouteAlong route: Route, at location: CLLocation?, proactive: Bool) {
-        // Voice Controller Locale nach Rerouting erneut setzen, um deutsche Sprachausgabe beizubehalten
-        if let viewController = _navigationViewController {
-            let locale = Locale(identifier: _language)
-            let speechSynthesizer = SystemSpeechSynthesizer()
-            speechSynthesizer.locale = locale
-            let routeVoiceController = RouteVoiceController(navigationService: navigationService, speechSynthesizer: MultiplexedSpeechSynthesizer([speechSynthesizer]))
-            viewController.voiceController = routeVoiceController
-        }
         sendEvent(eventType: MapBoxEventType.user_off_route)
     }
 

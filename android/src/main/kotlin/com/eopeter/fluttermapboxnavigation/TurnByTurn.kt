@@ -466,8 +466,8 @@ open class TurnByTurn(
     var simulateRoute = false
     private var mapStyleUrlDay: String? = null
     private var mapStyleUrlNight: String? = null
-    private var navigationLanguage = "en"
-    private var navigationVoiceUnits = DirectionsCriteria.IMPERIAL
+    private var navigationLanguage = "de"
+    private var navigationVoiceUnits = DirectionsCriteria.METRIC
     private var zoom = 15.0
     private var bearing = 0.0
     private var tilt = 0.0

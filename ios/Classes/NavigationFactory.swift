@@ -9,7 +9,7 @@ public class NavigationFactory : NSObject, FlutterStreamHandler
 {
     var _navigationViewController: NavigationViewController? = nil
     var _eventSink: FlutterEventSink? = nil
-    
+
     let ALLOW_ROUTE_SELECTION = false
     let IsMultipleUniqueRoutes = false
     var isEmbeddedNavigation = false
@@ -26,8 +26,8 @@ public class NavigationFactory : NSObject, FlutterStreamHandler
     var _simulateRoute = false
     var _allowsUTurnAtWayPoints: Bool?
     var _isOptimized = false
-    var _language = "en"
-    var _voiceUnits = "imperial"
+    var _language = "de"
+    var _voiceUnits = "metric"
     var _mapStyleUrlDay: String?
     var _mapStyleUrlNight: String?
     var _zoom: Double = 13.0
@@ -146,7 +146,14 @@ public class NavigationFactory : NSObject, FlutterStreamHandler
                     if(strongSelf._mapStyleUrlNight != nil){
                         nightStyle.mapStyleURL = URL(string: strongSelf._mapStyleUrlNight!)!
                     }
-                    let navigationOptions = NavigationOptions(styles: [dayStyle, nightStyle], navigationService: navigationService)
+
+                    // Voice Controller mit korrekter Locale erstellen, um deutsche Sprachausgabe auch beim Rerouting zu gewährleisten
+                    let locale = Locale(identifier: strongSelf._language)
+                    let speechSynthesizer = SystemSpeechSynthesizer()
+                    speechSynthesizer.locale = locale
+                    let routeVoiceController = RouteVoiceController(navigationService: navigationService, speechSynthesizer: MultiplexedSpeechSynthesizer([speechSynthesizer]))
+
+                    let navigationOptions = NavigationOptions(styles: [dayStyle, nightStyle], navigationService: navigationService, voiceController: routeVoiceController)
                     if (isUpdatingWaypoints) {
                         strongSelf._navigationViewController?.navigationService.router.updateRoute(with: IndexedRouteResponse(routeResponse: response, routeIndex: 0), routeOptions: strongSelf._options) { success in
                             if (success) {
@@ -173,7 +180,10 @@ public class NavigationFactory : NSObject, FlutterStreamHandler
             self._navigationViewController = NavigationViewController(for: routeResponse, routeIndex: 0, routeOptions: options, navigationOptions: navOptions)
             self._navigationViewController!.modalPresentationStyle = .fullScreen
             self._navigationViewController!.delegate = self
+
+            // Lokalisiere Map Labels mit der konfigurierten Sprache
             self._navigationViewController!.navigationMapView!.localizeLabels()
+
             self._navigationViewController!.showsReportFeedback = _showReportFeedbackButton
             self._navigationViewController!.showsEndOfRouteFeedback = _showEndOfRouteFeedback
         }
