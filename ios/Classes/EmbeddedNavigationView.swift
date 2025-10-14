@@ -225,7 +225,16 @@ public class FlutterMapboxNavigationView : NavigationFactory, FlutterPlatformVie
         }
         if (navigationService != nil) {
             navigationService.stop()
+            navigationService = nil
         }
+        // Auch NavigationViewController sauber entfernen
+        if (_navigationViewController != nil) {
+            _navigationViewController?.view.removeFromSuperview()
+            _navigationViewController?.removeFromParent()
+            _navigationViewController = nil
+        }
+        routeVoiceController = nil
+        speechSynthesizer = nil
         navigationMapView.removeRoutes()
         navigationMapView.removeWaypoints()
         routeResponse = nil
@@ -366,6 +375,12 @@ public class FlutterMapboxNavigationView : NavigationFactory, FlutterPlatformVie
         // Free Drive Kamera-Verfolgung stoppen bevor Navigation startet
         navigationMapView.navigationCamera.stop()
         passiveLocationProvider.stopUpdatingLocation()
+
+        // Alten Service explizit stoppen falls vorhanden
+        if navigationService != nil {
+            navigationService.stop()
+            navigationService = nil
+        }
 
         let navLocationManager = self._simulateRoute ? SimulatedLocationManager(route: response.routes!.first!) : NavigationLocationManager()
         navigationService = MapboxNavigationService(routeResponse: response,
