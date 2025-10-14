@@ -4,6 +4,7 @@ import MapboxMaps
 import MapboxDirections
 import MapboxCoreNavigation
 import MapboxNavigation
+import Combine
 
 public class FlutterMapboxNavigationView : NavigationFactory, FlutterPlatformView
 {
@@ -27,6 +28,9 @@ public class FlutterMapboxNavigationView : NavigationFactory, FlutterPlatformVie
 
     private let passiveLocationManager = PassiveLocationManager()
     private lazy var passiveLocationProvider = PassiveLocationProvider(locationManager: passiveLocationManager)
+
+    // Free Drive Status
+    private var isFreeDriveActive = false
 
     // Marker/Annotation management
     private var pointAnnotationManager: PointAnnotationManager?
@@ -335,35 +339,115 @@ public class FlutterMapboxNavigationView : NavigationFactory, FlutterPlatformVie
         passiveLocationProvider.startUpdatingLocation()
 
         navigationMapView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        navigationMapView.userLocationStyle = .puck2D()
 
-        // ViewportDataSource konfigurieren
-        let navigationViewportDataSource = NavigationViewportDataSource(navigationMapView.mapView)
+        // Puck Bearing von GPS-Course nehmen (nicht Kompass)
+        var locationOptions = LocationOptions()
+        locationOptions.puckBearingSource = .course
+        navigationMapView.mapView.location.options = locationOptions
 
-        // Zoom-Updates deaktivieren und festen Zoom setzen
-        navigationViewportDataSource.options.followingCameraOptions.zoomUpdatesAllowed = false
-        navigationViewportDataSource.options.followingCameraOptions.centerUpdatesAllowed = true
-        navigationViewportDataSource.options.followingCameraOptions.bearingUpdatesAllowed = true
-        navigationViewportDataSource.options.followingCameraOptions.pitchUpdatesAllowed = false
+        // Puck2D-Konfiguration mit rotem Pfeil-Icon
+        var puck2DConfig = Puck2DConfiguration()
 
-        // Festen Zoom-Level setzen
-        navigationViewportDataSource.followingMobileCamera.zoom = _zoom
+        // Roten Pfeil erstellen durch Rendering mit Farbe
+        let arrowConfig = UIImage.SymbolConfiguration(pointSize: 40, weight: .bold)
+        if let arrowImage = UIImage(systemName: "location.north.fill", withConfiguration: arrowConfig) {
+            // Image Renderer verwenden um Farbe zu setzen
+            let renderer = UIGraphicsImageRenderer(size: arrowImage.size)
+            let tintedImage = renderer.image { context in
+                UIColor.red.setFill()
+                arrowImage.draw(at: .zero)
+                context.fill(CGRect(origin: .zero, size: arrowImage.size), blendMode: .sourceAtop)
+            }
+            puck2DConfig.topImage = tintedImage
+        }
 
-        // ViewportDataSource setzen BEVOR follow() aufgerufen wird
-        navigationMapView.navigationCamera.viewportDataSource = navigationViewportDataSource
+        puck2DConfig.showsAccuracyRing = false  // Genauigkeitsring ausblenden
+        puck2DConfig.pulsing = nil  // Kein Pulsieren
 
-        // Kamera muss erst gestoppt werden, dann neu gestartet
-        navigationMapView.navigationCamera.stop()
+        navigationMapView.userLocationStyle = .puck2D(configuration: puck2DConfig)
 
-        // Jetzt Kamera-Verfolgung aktivieren
-        navigationMapView.navigationCamera.follow()
+        // Kompass ausblenden
+        navigationMapView.mapView.ornaments.options.compass.visibility = .hidden
+
+        // Follow Puck Viewport für smooth camera following mit bearing und 3D-Ansicht
+        let followPuckViewportState = navigationMapView.mapView.viewport.makeFollowPuckViewportState(
+            options: FollowPuckViewportStateOptions(
+                padding: UIEdgeInsets(top: 0, left: 0, bottom: 0, right: 0),
+                zoom: CGFloat(_zoom),
+                bearing: .course,  // Folgt GPS-Course (Fahrtrichtung)
+                pitch: 45  // 3D-Ansicht mit 45 Grad Neigung
+            )
+        )
+
+        // Viewport in Follow Puck State überführen
+        navigationMapView.mapView.viewport.transition(to: followPuckViewportState)
+
+        // 3D Terrain und Gebäude aktivieren (MapboxMaps v10 API)
+        do {
+            // 1. 3D Gebäude-Layer hinzufügen/aktivieren
+            var fillExtrusionLayer = FillExtrusionLayer(id: "3d-buildings")
+            fillExtrusionLayer.source = "composite"
+            fillExtrusionLayer.sourceLayer = "building"
+            fillExtrusionLayer.filter = Exp(.eq) {
+                Exp(.get) { "extrude" }
+                "true"
+            }
+            fillExtrusionLayer.minZoom = 15
+            fillExtrusionLayer.fillExtrusionColor = .constant(StyleColor(.lightGray))
+            fillExtrusionLayer.fillExtrusionHeight = .expression(Exp(.get) { "height" })
+            fillExtrusionLayer.fillExtrusionBase = .expression(Exp(.get) { "min_height" })
+            fillExtrusionLayer.fillExtrusionOpacity = .constant(0.6)
+
+            try navigationMapView.mapView.mapboxMap.style.addLayer(fillExtrusionLayer)
+
+            // 2. 3D Terrain hinzufügen
+            var demSource = RasterDemSource()
+            demSource.url = "mapbox://mapbox.mapbox-terrain-dem-v1"
+            demSource.tileSize = 514
+            demSource.maxzoom = 14.0
+            try navigationMapView.mapView.mapboxMap.style.addSource(demSource, id: "mapbox-dem")
+
+            var terrain = Terrain(sourceId: "mapbox-dem")
+            terrain.exaggeration = .constant(Double(1.5))  // 1.5x Höhenüberhöhung
+            try navigationMapView.mapView.mapboxMap.style.setTerrain(terrain)
+
+            // 3. Sky Layer für atmosphärische Effekte
+            var skyLayer = SkyLayer(id: "sky-layer")
+            skyLayer.skyType = .constant(SkyType.atmosphere)
+            skyLayer.skyAtmosphereSun = .constant([0.0, 0.0])
+            skyLayer.skyAtmosphereSunIntensity = .constant(Double(15.0))
+            try navigationMapView.mapView.mapboxMap.style.addLayer(skyLayer)
+        } catch {
+            // Fehler ignorieren - 3D ist optional
+        }
+
+        // Free Drive aktivieren
+        isFreeDriveActive = true
 
         result(true)
     }
 
     func stopEmbeddedFreeDrive(result: @escaping FlutterResult) {
-        // Free Drive Kamera-Verfolgung stoppen
-        navigationMapView.navigationCamera.stop()
+        // Free Drive deaktivieren
+        isFreeDriveActive = false
+
+        // 3D Features entfernen
+        do {
+            try navigationMapView.mapView.mapboxMap.style.removeLayer(withId: "3d-buildings")
+            try navigationMapView.mapView.mapboxMap.style.removeLayer(withId: "sky-layer")
+            try navigationMapView.mapView.mapboxMap.style.removeSource(withId: "mapbox-dem")
+            // Terrain entfernen durch leeren Terrain-Wert
+            var emptyTerrain = Terrain(sourceId: "")
+            emptyTerrain.exaggeration = .constant(0)
+            try navigationMapView.mapView.mapboxMap.style.setTerrain(emptyTerrain)
+        } catch {
+            // Fehler ignorieren - einfach weitermachen
+        }
+
+        // Viewport idle state
+        navigationMapView.mapView.viewport.idle()
+
+        // Location Provider stoppen
         passiveLocationProvider.stopUpdatingLocation()
 
         result(true)
